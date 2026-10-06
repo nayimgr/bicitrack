@@ -101,6 +101,11 @@ footer p { max-width: 80ch; }
 
 .leaflet-container { font: inherit; background: var(--surface); }
 .leaflet-tooltip { font: 500 0.9rem var(--body); }
+/* Mapa base más apagado para que destaquen las estaciones; en oscuro se invierte */
+.leaflet-tile-pane { filter: grayscale(0.85) contrast(0.9) brightness(1.05); }
+@media (prefers-color-scheme: dark) {
+  .leaflet-tile-pane { filter: grayscale(0.85) invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+}
 
 @media (max-width: 900px) {
   .hero, .two { grid-template-columns: 1fr; }
@@ -161,7 +166,7 @@ footer p { max-width: 80ch; }
 
 <footer>
   <p id="method"></p>
-  <p>Datos: feed GBFS público de BiciMAD (EMT Madrid / Ayuntamiento de Madrid). Mapa © OpenStreetMap, © CARTO. Código: <a href="https://github.com/nayimgr/bicitrack">github.com/nayimgr/bicitrack</a>.</p>
+  <p>Datos: feed GBFS público de BiciMAD (EMT Madrid / Ayuntamiento de Madrid). Mapa © OpenStreetMap. Código: <a href="https://github.com/nayimgr/bicitrack">github.com/nayimgr/bicitrack</a>.</p>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -285,9 +290,9 @@ function select(s, pan = false) {
 
 function renderMap() {
   map = L.map("map", { zoomControl: true, attributionControl: true }).setView([40.4205, -3.7005], 13);
-  L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`, {
-    maxZoom: 19, subdomains: "abcd",
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
   }).addTo(map);
   const pts = [];
   D.stations.filter(s => s.lat != null).forEach(s => {
