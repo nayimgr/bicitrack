@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bicitrack · ¿A qué hora reponen BiciMAD?</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚲</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root {
+  --bg: #e9eeec; --surface: #ffffff; --ink: #17232a; --muted: #586a72;
+  --line: #c9d3d0; --rep: #0e6f8c; --ret: #c48510; --empty: #9aa8ad;
+  --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cond: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10181c; --surface: #18232a; --ink: #e4ebe9; --muted: #92a3a9;
+    --line: #2b3a41; --rep: #4fb3d1; --ret: #e3ae45; --empty: #5d6d73;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 16px/1.5 var(--body);
+}
+a { color: var(--rep); }
+:focus-visible { outline: 2px solid var(--rep); outline-offset: 2px; }
+
+header { max-width: 1280px; margin: 0 auto; padding: 28px 20px 12px; }
+h1 {
+  font: 700 clamp(2.1rem, 5vw, 3.6rem)/1 var(--cond);
+  letter-spacing: -0.01em; margin: 0 0 10px;
+}
+.meta { color: var(--muted); margin: 0; max-width: 70ch; }
+
+main { max-width: 1280px; margin: 0 auto; padding: 8px 20px 40px; }
+.hero {
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px;
+}
+#map {
+  height: min(70vh, 640px); min-height: 380px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface);
+}
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px; display: flex; flex-direction: column; gap: 10px;
+}
+.panel h2 { font: 600 1.6rem/1.1 var(--cond); margin: 0; }
+.panel .sub { color: var(--muted); margin: 0; font-size: 0.95rem; }
+.clock { width: 100%; max-width: 300px; align-self: center; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin: 0; }
+.facts dt { color: var(--muted); font-size: 0.85rem; }
+.facts dd { margin: 0; font: 600 1.35rem/1.1 var(--cond); font-variant-numeric: tabular-nums; }
+.toggle { display: flex; gap: 6px; flex-wrap: wrap; }
+.toggle button {
+  font: 500 0.9rem var(--body); color: var(--ink); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer;
+}
+.toggle button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.reset { align-self: flex-start; font: 500 0.9rem var(--body); background: none; border: 0; color: var(--rep); padding: 0; cursor: pointer; }
+
+section { margin-top: 32px; }
+section > h2 { font: 600 1.7rem/1.1 var(--cond); margin: 0 0 4px; }
+section > p { color: var(--muted); margin: 0 0 14px; max-width: 72ch; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow-x: auto; }
+.card h3 { font: 600 1.15rem var(--cond); margin: 0 0 8px; }
+.legend { display: flex; gap: 16px; font-size: 0.9rem; color: var(--muted); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
+
+.heat { display: grid; grid-template-columns: 34px repeat(24, minmax(14px, 1fr)); gap: 2px; min-width: 460px; font-size: 0.75rem; color: var(--muted); }
+.heat div { aspect-ratio: 1; border-radius: 2px; }
+.heat .lab { aspect-ratio: auto; align-self: center; }
+.heat .hl { aspect-ratio: auto; text-align: center; }
+
+.tablewrap { overflow: auto; max-height: 440px; }
+thead th { position: sticky; top: 0; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font: 600 0.9rem var(--body); color: var(--muted); }
+td.num, th.num { text-align: right; }
+tbody tr { cursor: pointer; }
+tbody tr:hover, tbody tr.sel { background: color-mix(in srgb, var(--rep) 10%, transparent); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+input[type=search] {
+  font: 400 1rem var(--body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; width: min(100%, 340px); margin-bottom: 10px;
+}
+.events { list-style: none; margin: 0; padding: 0; max-height: 480px; overflow-y: auto; }
+.events li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.95rem; }
+.events .d { font: 600 1rem var(--cond); font-variant-numeric: tabular-nums; }
+.notice { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--ret); border-radius: 8px; padding: 12px 16px; margin: 0 0 16px; }
+
+footer { max-width: 1280px; margin: 0 auto; padding: 0 20px 40px; color: var(--muted); font-size: 0.9rem; }
+footer p { max-width: 80ch; }
+
+.leaflet-container { font: inherit; background: var(--surface); }
+.leaflet-tooltip { font: 500 0.9rem var(--body); }
+
+@media (max-width: 900px) {
+  .hero, .two { grid-template-columns: 1fr; }
+  #map { height: 55vh; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>¿A qué hora reponen BiciMAD?</h1>
+  <p class="meta" id="meta">Cargando datos…</p>
+</header>
+
+<main>
+  <div id="notice"></div>
+  <div class="hero">
+    <div id="map" role="region" aria-label="Mapa de estaciones"></div>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+
+  <section>
+    <h2>Cuándo pasa el camión</h2>
+    <p>Cada evento es un salto brusco en el número de bicis de una estación, demasiado grande para ser obra de usuarios.</p>
+    <div class="two">
+      <div class="card">
+        <h3>Eventos por media hora</h3>
+        <div class="legend"><span><i class="sw" style="background:var(--rep)"></i>Reposiciones</span><span><i class="sw" style="background:var(--ret)"></i>Retiradas</span></div>
+        <svg id="hist" viewBox="0 0 480 220" width="100%" role="img" aria-label="Histograma de eventos por hora"></svg>
+      </div>
+      <div class="card">
+        <h3>Reposiciones por día y hora</h3>
+        <div class="heat" id="heat"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Estaciones</h2>
+    <p>Ordenadas por número de reposiciones detectadas. Pulsa una fila para verla en el mapa.</p>
+    <div class="two">
+      <div class="card">
+        <input type="search" id="q" placeholder="Buscar estación" aria-label="Buscar estación">
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Estación</th><th class="num">Reposiciones</th><th class="num">Hora típica</th><th class="num">Bicis ahora</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Últimos eventos</h3>
+        <ul class="events" id="events"></ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p id="method"></p>
+  <p>Datos: feed GBFS público de BiciMAD (EMT Madrid / Ayuntamiento de Madrid). Mapa © OpenStreetMap, © CARTO. Código: <a href="https://github.com/nayimgr/bicitrack">github.com/nayimgr/bicitrack</a>.</p>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const SVGNS = "http://www.w3.org/2000/svg";
+const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+
+// Color cíclico por hora del día: el mismo tono a las 23:59 que a las 00:00
+const hourColor = h => `hsl(${(h / 24 * 360 + 200) % 360} ${dark ? 65 : 70}% ${dark ? 60 : 42}%)`;
+const fillColor = f => `hsl(${Math.round(f * 130)} 60% ${dark ? 55 : 42}%)`; // rojo vacío → verde lleno
+const fmtH = h => h == null ? "—" : `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.round((h % 1) * 60) % 60).padStart(2, "0")}`;
+const fmtDate = ts => new Date(ts * 1000).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+let D, map, markers = {}, colorMode = "hour", selected = null;
+
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+// Reloj de 24 h: una barra radial por hora, con el color de esa hora
+function clock(counts, meanHour, centerText) {
+  const S = 300, c = S / 2, r0 = 54, r1 = 120;
+  const svg = el("svg", { viewBox: `0 0 ${S} ${S}`, class: "clock", role: "img",
+    "aria-label": "Reloj de 24 horas con las reposiciones por hora" });
+  const max = Math.max(1, ...counts);
+  el("circle", { cx: c, cy: c, r: r0 - 1, fill: "none", stroke: css("--line") }, svg);
+  for (let h = 0; h < 24; h++) {
+    const a0 = (h / 24) * 2 * Math.PI - Math.PI / 2 + 0.02, a1 = ((h + 1) / 24) * 2 * Math.PI - Math.PI / 2 - 0.02;
+    const r = r0 + 4 + (r1 - r0 - 4) * (counts[h] / max);
+    const p = (rr, a) => `${c + rr * Math.cos(a)},${c + rr * Math.sin(a)}`;
+    el("path", { d: `M${p(r0 + 2, a0)} L${p(r, a0)} A${r},${r} 0 0 1 ${p(r, a1)} L${p(r0 + 2, a1)} A${r0 + 2},${r0 + 2} 0 0 0 ${p(r0 + 2, a0)}Z`,
+      fill: counts[h] ? hourColor(h + 0.5) : css("--line"), opacity: counts[h] ? 1 : 0.5 }, svg)
+      .appendChild(Object.assign(document.createElementNS(SVGNS, "title"), { textContent: `${h}:00–${h + 1}:00 · ${counts[h]}` }));
+  }
+  for (const h of [0, 6, 12, 18]) {
+    const a = (h / 24) * 2 * Math.PI - Math.PI / 2;
+    el("text", { x: c + (r1 + 16) * Math.cos(a), y: c + (r1 + 16) * Math.sin(a) + 5, "text-anchor": "middle",
+      fill: css("--muted"), "font-size": 13, "font-family": css("--body") }, svg).textContent = `${h}h`;
+  }
+  if (meanHour != null) {
+    // marca en el anillo interior: hora típica
+    const a = (meanHour / 24) * 2 * Math.PI - Math.PI / 2, rr = r0 - 1;
+    el("circle", { cx: c + rr * Math.cos(a), cy: c + rr * Math.sin(a), r: 5, fill: css("--ink") }, svg);
+  }
+  const [big, small] = centerText ?? [fmtH(meanHour), "hora típica"];
+  el("text", { x: c, y: c + 6, "text-anchor": "middle", fill: css("--ink"), "font-size": 28,
+    "font-weight": 600, "font-family": css("--cond") }, svg).textContent = big;
+  el("text", { x: c, y: c + 24, "text-anchor": "middle", fill: css("--muted"), "font-size": 12,
+    "font-family": css("--body") }, svg).textContent = small;
+  return svg;
+}
+
+function circMean(counts) {
+  let s = 0, co = 0, n = 0;
+  counts.forEach((k, h) => { const a = (h + 0.5) / 24 * 2 * Math.PI; s += k * Math.sin(a); co += k * Math.cos(a); n += k; });
+  if (!n) return null;
+  return ((Math.atan2(s, co) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 24;
+}
+
+function renderPanel() {
+  const p = $("#panel"); p.innerHTML = "";
+  const toggle = document.createElement("div"); toggle.className = "toggle";
+  toggle.setAttribute("role", "group"); toggle.setAttribute("aria-label", "Color del mapa");
+  for (const [mode, label] of [["hour", "Hora típica"], ["fill", "Ocupación ahora"]]) {
+    const b = document.createElement("button"); b.textContent = label;
+    b.setAttribute("aria-pressed", colorMode === mode);
+    b.onclick = () => { colorMode = mode; styleMarkers(); renderPanel(); };
+    toggle.appendChild(b);
+  }
+  p.appendChild(toggle);
+
+  if (!selected) {
+    const total = D.stations.reduce((a, s) => a.map((v, i) => v + s.hours[i]), Array(24).fill(0));
+    const n = total.reduce((a, b) => a + b, 0);
+    p.insertAdjacentHTML("beforeend", `<h2>Toda la red</h2><p class="sub">${n} reposiciones en ${D.stations.filter(s => s.nRep).length} estaciones, repartidas por hora del día.</p>`);
+    p.appendChild(clock(total, null, [n, "reposiciones"]));
+    p.insertAdjacentHTML("beforeend", `<p class="sub">${colorMode === "hour"
+      ? "En el mapa, el color de cada estación es su hora típica de reposición (el mismo que en este reloj) y el tamaño, cuántas se han detectado."
+      : "En el mapa, el color indica cuántas bicis tiene ahora cada estación respecto a su capacidad: rojo vacía, verde llena."}</p>`);
+    return;
+  }
+  const s = selected;
+  p.insertAdjacentHTML("beforeend", `<h2>${s.name ?? s.id}</h2>`);
+  p.appendChild(clock(s.hours, s.meanHour));
+  p.insertAdjacentHTML("beforeend", `<dl class="facts">
+    <div><dt>Reposiciones</dt><dd>${s.nRep}</dd></div>
+    <div><dt>Retiradas</dt><dd>${s.nRet}</dd></div>
+    <div><dt>Bicis por reposición</dt><dd>${s.avgBikes ?? "—"}</dd></div>
+    <div><dt>Bicis ahora</dt><dd>${s.bikes ?? "—"}${s.cap ? ` / ${s.cap}` : ""}</dd></div></dl>
+    ${s.open === false ? '<p class="sub">Estación fuera de servicio ahora mismo.</p>' : ""}`);
+  const back = document.createElement("button"); back.className = "reset"; back.textContent = "Ver toda la red";
+  back.onclick = () => select(null);
+  p.appendChild(back);
+}
+
+function markerStyle(s) {
+  const has = s.nRep > 0;
+  let color = css("--empty");
+  if (colorMode === "hour" && has) color = hourColor(s.meanHour);
+  if (colorMode === "fill" && s.cap && s.bikes != null) color = fillColor(Math.min(1, s.bikes / s.cap));
+  const radius = colorMode === "hour" ? (has ? 4 + 2.2 * Math.sqrt(s.nRep) : 3) : 6;
+  const isSel = selected && selected.id === s.id;
+  return { radius, color: isSel ? css("--ink") : color, weight: isSel ? 3 : 1, fillColor: color,
+    fillOpacity: s.open === false ? 0.25 : 0.85, opacity: 1 };
+}
+function styleMarkers() { D.stations.forEach(s => markers[s.id] && markers[s.id].setStyle(markerStyle(s)).setRadius(markerStyle(s).radius)); }
+
+function select(s, pan = false) {
+  selected = s;
+  styleMarkers(); renderPanel();
+  document.querySelectorAll("#rows tr").forEach(tr => tr.classList.toggle("sel", s && tr.dataset.id === s.id));
+  if (s && pan) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 15));
+  if (s) markers[s.id]?.bringToFront();
+}
+
+function renderMap() {
+  map = L.map("map", { zoomControl: true, attributionControl: true }).setView([40.4205, -3.7005], 13);
+  L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`, {
+    maxZoom: 19, subdomains: "abcd",
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'
+  }).addTo(map);
+  const pts = [];
+  D.stations.filter(s => s.lat != null).forEach(s => {
+    const m = L.circleMarker([s.lat, s.lon], markerStyle(s)).addTo(map);
+    m.bindTooltip(`${s.name ?? s.id}<br>${s.nRep} reposiciones · ${fmtH(s.meanHour)}`);
+    m.on("click", () => select(s));
+    markers[s.id] = m; pts.push([s.lat, s.lon]);
+  });
+  if (pts.length) map.fitBounds(pts, { padding: [20, 20] });
+}
+
+function renderHist() {
+  const svg = $("#hist"), W = 480, H = 220, pad = { l: 30, r: 6, t: 8, b: 26 };
+  const n = D.histRep.length, bw = (W - pad.l - pad.r) / n;
+  const max = Math.max(1, ...D.histRep, ...D.histRet);
+  const y = v => H - pad.b - (H - pad.t - pad.b) * v / max;
+  for (const t of [0, Math.round(max / 2), max]) {
+    el("line", { x1: pad.l, x2: W - pad.r, y1: y(t), y2: y(t), stroke: css("--line") }, svg);
+    el("text", { x: pad.l - 6, y: y(t) + 4, "text-anchor": "end", "font-size": 11, fill: css("--muted") }, svg).textContent = t;
+  }
+  D.histRep.forEach((v, i) => {
+    el("rect", { x: pad.l + i * bw + 1, y: y(v), width: bw / 2 - 1, height: H - pad.b - y(v), fill: css("--rep") }, svg);
+    el("rect", { x: pad.l + i * bw + bw / 2, y: y(D.histRet[i]), width: bw / 2 - 1, height: H - pad.b - y(D.histRet[i]), fill: css("--ret") }, svg);
+  });
+  for (let h = 0; h <= 24; h += 3)
+    el("text", { x: pad.l + h * 2 * bw, y: H - 8, "text-anchor": "middle", "font-size": 11, fill: css("--muted") }, svg).textContent = `${h}h`;
+}
+
+function renderHeat() {
+  const box = $("#heat"), max = Math.max(1, ...D.heat.flat());
+  box.appendChild(document.createElement("span"));
+  for (let h = 0; h < 24; h++) box.insertAdjacentHTML("beforeend", `<span class="hl">${h % 3 === 0 ? h : ""}</span>`);
+  D.heat.forEach((row, d) => {
+    box.insertAdjacentHTML("beforeend", `<span class="lab">${DIAS[d]}</span>`);
+    row.forEach((v, h) => {
+      const c = document.createElement("div");
+      c.style.background = v ? `color-mix(in srgb, var(--rep) ${15 + 85 * v / max}%, transparent)` : "var(--bg)";
+      c.title = `${DIAS[d]} ${h}:00 · ${v} reposiciones`;
+      box.appendChild(c);
+    });
+  });
+}
+
+function renderTable() {
+  const q = $("#q").value.trim().toLowerCase();
+  const rows = D.stations.filter(s => !q || (s.name ?? "").toLowerCase().includes(q) || s.id === q)
+    .sort((a, b) => b.nRep - a.nRep || (a.name ?? "").localeCompare(b.name ?? "")).slice(0, 60);
+  $("#rows").innerHTML = rows.map(s => `<tr data-id="${s.id}" tabindex="0" class="${selected?.id === s.id ? "sel" : ""}">
+    <td><i class="dot" style="background:${s.nRep ? hourColor(s.meanHour) : css("--empty")}"></i>${s.name ?? s.id}</td>
+    <td class="num">${s.nRep}</td><td class="num">${fmtH(s.meanHour)}</td>
+    <td class="num">${s.bikes ?? "—"}${s.cap ? ` / ${s.cap}` : ""}</td></tr>`).join("");
+  document.querySelectorAll("#rows tr").forEach(tr => {
+    const go = () => { select(D.stations.find(s => s.id === tr.dataset.id), true); $("#map").scrollIntoView({ behavior: "smooth", block: "center" }); };
+    tr.onclick = go; tr.onkeydown = e => { if (e.key === "Enter") go(); };
+  });
+}
+
+function renderEvents() {
+  const byId = Object.fromEntries(D.stations.map(s => [s.id, s]));
+  $("#events").innerHTML = D.recent.length ? D.recent.map(e => `<li><span>${e.t.slice(5)} · ${byId[e.id]?.name ?? e.id}</span>
+    <span class="d" style="color:${e.d > 0 ? "var(--rep)" : "var(--ret)"}">${e.d > 0 ? "+" : ""}${e.d}</span></li>`).join("")
+    : "<li>Todavía no hay eventos.</li>";
+}
+
+async function init() {
+  try {
+    const r = await fetch(`data.json?t=${Date.now()}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    D = await r.json();
+  } catch (e) {
+    $("#meta").textContent = `No se pudo cargar data.json (${e.message}). Si abres el archivo en local, sirve la carpeta con: python -m http.server`;
+    return;
+  }
+  const days = D.firstPoll ? (D.lastPoll - D.firstPoll) / 86400 : 0;
+  $("#meta").textContent = `${D.stations.length} estaciones vigiladas durante ${days < 2 ? (days * 24).toFixed(0) + " horas" : days.toFixed(1) + " días"}, desde el ${fmtDate(D.firstPoll)}. Última actualización: ${fmtDate(D.generated)}.`;
+  const nRep = D.stations.reduce((a, s) => a + s.nRep, 0);
+  if (nRep < 20) $("#notice").innerHTML = `<p class="notice">Aún hay pocos datos (${nRep} reposiciones detectadas). Los patrones serán fiables tras una o dos semanas de recogida.</p>`;
+  $("#method").textContent = `Método: el estado de cada estación se consulta cada minuto. Se cuenta como reposición una subida de al menos ${D.params.min_jump} bicis en menos de ${Math.round(D.params.merge_window / 60)} minutos (retirada si es una bajada), descartando huecos en la recogida de más de ${Math.round(D.params.max_gap / 60)} minutos y estaciones fuera de servicio. Horas en ${D.timezone}.`;
+  renderMap(); renderPanel(); renderHist(); renderHeat(); renderTable(); renderEvents();
+  $("#q").addEventListener("input", renderTable);
+}
+init();
+</script>
+</body>
+</html>

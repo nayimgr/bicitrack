@@ -1,0 +1,20 @@
+# Servicio de usuario systemd para el recolector.
+# Instalar:
+#   mkdir -p ~/.config/systemd/user
+#   cp bicitrack.service ~/.config/systemd/user/
+#   (edita WorkingDirectory y la ruta de python si hace falta)
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now bicitrack
+#   loginctl enable-linger $USER     # para que siga corriendo sin sesión abierta
+[Unit]
+Description=bicitrack: recolector GBFS de BiciMAD
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/github/bicitrack
+ExecStart=/usr/bin/env python3 collector.py --db bicimad.sqlite --interval 60
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

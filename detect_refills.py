@@ -31,7 +31,7 @@ def load(db):
     con = sqlite3.connect(db)
     r = pd.read_sql("SELECT * FROM readings ORDER BY station_id, ts", con)
     polls = pd.read_sql("SELECT ts FROM polls WHERE ok=1 ORDER BY ts", con)["ts"].to_numpy()
-    st = pd.read_sql("SELECT station_id, name, capacity FROM stations", con)
+    st = pd.read_sql("SELECT station_id, name, lat, lon, capacity FROM stations", con)
     con.close()
     return r, polls, st
 
