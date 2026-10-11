@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bicitrack · Ocupación de BiciMAD</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚲</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root {
+  --bg: #e9eeec; --surface: #ffffff; --ink: #17232a; --muted: #586a72;
+  --line: #c9d3d0; --grid: #e3e8e6; --night: #f2f5f4;
+  /* Ocupación (divergente): vacía ↔ mitad ↔ llena */
+  --empty: #c48510; --mid: #d6dcda; --full: #0a6f9e; --nodata: #9aa8ad;
+  --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cond: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10181c; --surface: #18232a; --ink: #e4ebe9; --muted: #92a3a9;
+    --line: #2b3a41; --grid: #223038; --night: #1d2a31;
+    --empty: #bd862a; --mid: #3b474c; --full: #3a9dc4; --nodata: #5d6d73;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 16px/1.5 var(--body);
+}
+a { color: var(--full); }
+:focus-visible { outline: 2px solid var(--full); outline-offset: 2px; }
+
+header { max-width: 1280px; margin: 0 auto; padding: 28px 20px 12px; }
+h1 {
+  font: 700 clamp(2.1rem, 5vw, 3.6rem)/1 var(--cond);
+  letter-spacing: -0.01em; margin: 0 0 10px;
+}
+.meta { color: var(--muted); margin: 0; max-width: 70ch; }
+
+main { max-width: 1280px; margin: 0 auto; padding: 8px 20px 40px; }
+.hero {
+  display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px;
+}
+#map {
+  height: min(70vh, 600px); min-height: 380px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface);
+}
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+}
+.panel h2 { font: 600 1.6rem/1.1 var(--cond); margin: 0; }
+.sub { color: var(--muted); margin: 0; font-size: 0.95rem; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin: 0; }
+.facts dt { color: var(--muted); font-size: 0.85rem; }
+.facts dd { margin: 0; font: 600 1.35rem/1.1 var(--cond); font-variant-numeric: tabular-nums; }
+.reset { align-self: flex-start; font: 500 0.9rem var(--body); background: none; border: 0; color: var(--full); padding: 0; cursor: pointer; }
+
+section { margin-top: 32px; }
+section > h2 { font: 600 1.7rem/1.1 var(--cond); margin: 0 0 4px; }
+section > p { color: var(--muted); margin: 0 0 14px; max-width: 72ch; }
+.card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.card h3 { font: 600 1.15rem var(--cond); margin: 0 0 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
+.key { display: inline-block; width: 18px; height: 0; border-top: 2px solid; margin-right: 6px; vertical-align: middle; }
+.ramp { display: inline-block; width: 120px; height: 10px; border-radius: 2px; vertical-align: middle; margin: 0 6px;
+  background: linear-gradient(90deg, var(--empty), var(--mid), var(--full)); }
+
+.chart { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+.chart text { font: 400 11px var(--body); fill: var(--muted); }
+.tip {
+  position: absolute; pointer-events: none; z-index: 5; display: none;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 10px; font-size: 0.85rem; line-height: 1.35; white-space: nowrap;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+.tip strong { font: 600 1.05rem var(--cond); font-variant-numeric: tabular-nums; }
+.tip .t { color: var(--muted); }
+
+#heat { display: block; width: 100%; height: 560px; image-rendering: pixelated; cursor: crosshair; border-radius: 4px; }
+
+.tablewrap { overflow: auto; max-height: 460px; }
+thead th { position: sticky; top: 0; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font: 600 0.9rem var(--body); color: var(--muted); }
+th button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+th[aria-sort] button { color: var(--ink); }
+td.num, th.num { text-align: right; }
+tbody tr { cursor: pointer; }
+tbody tr:hover, tbody tr.sel { background: color-mix(in srgb, var(--full) 10%, transparent); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+input[type=search] {
+  font: 400 1rem var(--body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; width: min(100%, 340px); margin-bottom: 10px;
+}
+.notice { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--empty); border-radius: 8px; padding: 12px 16px; margin: 0 0 16px; }
+
+footer { max-width: 1280px; margin: 0 auto; padding: 0 20px 40px; color: var(--muted); font-size: 0.9rem; }
+footer p { max-width: 80ch; }
+
+.leaflet-container { font: inherit; background: var(--surface); }
+.leaflet-tooltip { font: 500 0.9rem var(--body); }
+/* Mapa base más apagado para que destaquen las estaciones; en oscuro se invierte */
+.leaflet-tile-pane { filter: grayscale(0.85) contrast(0.9) brightness(1.05); }
+@media (prefers-color-scheme: dark) {
+  .leaflet-tile-pane { filter: grayscale(0.85) invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+}
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: 1fr; }
+  #map { height: 55vh; }
+  #heat { height: 420px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ocupación de BiciMAD</h1>
+  <p class="meta" id="meta">Cargando datos…</p>
+</header>
+
+<main>
+  <div id="notice"></div>
+  <div class="hero">
+    <div id="map" role="region" aria-label="Mapa de estaciones"></div>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+
+  <section>
+    <h2 id="seriesTitle">Ocupación en el tiempo</h2>
+    <p id="seriesSub"></p>
+    <div class="card" id="seriesCard">
+      <div class="legend" id="seriesLegend"></div>
+      <div id="series"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Todas las estaciones</h2>
+    <p>Una fila por estación, ordenadas de más vacía a más llena de media; el tiempo avanza hacia la derecha. Pasa el ratón para ver el detalle y pulsa para seleccionar la estación.</p>
+    <div class="card" id="heatCard">
+      <div class="legend"><span>Vacía<i class="ramp"></i>Llena</span><span><i class="dot" style="background:var(--bg);border:1px solid var(--line)"></i>Sin datos o fuera de servicio</span></div>
+      <canvas id="heat" role="img" aria-label="Mapa de calor de la ocupación de cada estación a lo largo del tiempo"></canvas>
+    </div>
+  </section>
+
+  <section>
+    <h2>Estaciones</h2>
+    <p>Porcentaje del tiempo que cada estación ha estado vacía (0 bicis) o llena (bicis = capacidad) desde que empezó la recogida. Pulsa una fila para verla en el mapa.</p>
+    <div class="card">
+      <input type="search" id="q" placeholder="Buscar estación" aria-label="Buscar estación">
+      <div class="tablewrap">
+        <table>
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p id="method"></p>
+  <p>Datos: feed GBFS público de BiciMAD (EMT Madrid / Ayuntamiento de Madrid). Mapa © OpenStreetMap. Código: <a href="https://github.com/nayimgr/bicitrack">github.com/nayimgr/bicitrack</a>.</p>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const SVGNS = "http://www.w3.org/2000/svg";
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const pct = f => f == null ? "—" : `${Math.round(f * 100)} %`;
+
+let D, map, markers = {}, selected = null, byId = {};
+let fmtTime, fmtDay, localHM, tsAt;   // dependen de D.timezone
+
+// ---------- color de ocupación (divergente ámbar ↔ gris ↔ azul) ----------
+const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+let RAMP;
+function occRGB(f) {
+  const [a, b, t] = f < 0.5 ? [RAMP.empty, RAMP.mid, f * 2] : [RAMP.mid, RAMP.full, f * 2 - 1];
+  return a.map((v, i) => Math.round(v + (b[i] - v) * t));
+}
+const occColor = f => f == null ? css("--nodata") : `rgb(${occRGB(Math.max(0, Math.min(1, f))).join(",")})`;
+const occOf = s => (s.open && s.cap && s.bikes != null) ? Math.min(1, s.bikes / s.cap) : null;
+
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+// ---------- gráfica de líneas con cruceta y tooltip ----------
+// cfg: { n, series:[{name, values, color, dash}], yMax, yFmt, yTicks, ref:{v,label},
+//        xTicks:[{i,label}], xTip(i), shade:[[i0,i1]], height }
+function lineChart(host, card, cfg) {
+  host.innerHTML = "";
+  const W = Math.max(280, host.clientWidth), H = cfg.height ?? 260;
+  const pad = { l: 40, r: 12, t: 10, b: 24 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: "chart", role: "img",
+    "aria-label": cfg.label ?? "" }, host);
+  const x = i => pad.l + (W - pad.l - pad.r) * (cfg.n > 1 ? i / (cfg.n - 1) : 0.5);
+  const y = v => H - pad.b - (H - pad.t - pad.b) * Math.min(v, cfg.yMax) / cfg.yMax;
+
+  for (const [i0, i1] of cfg.shade ?? [])
+    el("rect", { x: x(i0), y: pad.t, width: Math.max(0, x(i1) - x(i0)), height: H - pad.t - pad.b, fill: css("--night") }, svg);
+  for (const t of cfg.yTicks) {
+    el("line", { x1: pad.l, x2: W - pad.r, y1: y(t), y2: y(t), stroke: css("--grid") }, svg);
+    el("text", { x: pad.l - 6, y: y(t) + 4, "text-anchor": "end" }, svg).textContent = cfg.yFmt(t);
+  }
+  el("line", { x1: pad.l, x2: W - pad.r, y1: y(0), y2: y(0), stroke: css("--line") }, svg);
+  let lastX = -Infinity;
+  for (const t of cfg.xTicks) {
+    if (x(t.i) - lastX < 44) continue;
+    lastX = x(t.i);
+    el("line", { x1: x(t.i), x2: x(t.i), y1: H - pad.b, y2: H - pad.b + 4, stroke: css("--line") }, svg);
+    el("text", { x: x(t.i), y: H - 6, "text-anchor": "middle" }, svg).textContent = t.label;
+  }
+  if (cfg.ref) {
+    el("line", { x1: pad.l, x2: W - pad.r, y1: y(cfg.ref.v), y2: y(cfg.ref.v), stroke: css("--muted"), "stroke-dasharray": "2 3" }, svg);
+    el("text", { x: W - pad.r, y: y(cfg.ref.v) - 4, "text-anchor": "end" }, svg).textContent = cfg.ref.label;
+  }
+  for (const s of cfg.series) {
+    let d = "", pen = false;
+    s.values.forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true;
+    });
+    el("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round",
+      "stroke-linecap": "round", "stroke-dasharray": s.dash ?? "" }, svg);
+  }
+
+  // Capa de interacción: la cruceta salta al punto más cercano en X
+  const cross = el("line", { y1: pad.t, y2: H - pad.b, stroke: css("--muted"), visibility: "hidden" }, svg);
+  const dots = cfg.series.map(s => el("circle", { r: 4, fill: s.color, stroke: css("--surface"), "stroke-width": 2, visibility: "hidden" }, svg));
+  const hit = el("rect", { x: pad.l, y: 0, width: W - pad.l - pad.r, height: H, fill: "transparent" }, svg);
+  let tip = card.querySelector(".tip");
+  if (!tip) { tip = document.createElement("div"); tip.className = "tip"; card.appendChild(tip); }
+  const hide = () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dots.forEach(d => d.setAttribute("visibility", "hidden")); };
+  hit.addEventListener("pointermove", e => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(cfg.n - 1, Math.round((px - pad.l) / (W - pad.l - pad.r) * (cfg.n - 1))));
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    tip.replaceChildren();
+    const head = document.createElement("div"); head.className = "t"; head.textContent = cfg.xTip(i); tip.appendChild(head);
+    cfg.series.forEach((s, k) => {
+      const v = s.values[i];
+      dots[k].setAttribute("visibility", v == null ? "hidden" : "visible");
+      if (v != null) { dots[k].setAttribute("cx", x(i)); dots[k].setAttribute("cy", y(v)); }
+      const row = document.createElement("div");
+      const key = document.createElement("i"); key.className = "key"; key.style.borderTopColor = s.color;
+      if (s.dash) key.style.borderTopStyle = "dashed";
+      const val = document.createElement("strong"); val.textContent = v == null ? "sin datos" : cfg.yFmt(v, true);
+      const nm = document.createElement("span"); nm.className = "t"; nm.textContent = cfg.series.length > 1 ? ` ${s.name}` : "";
+      row.append(key, val, nm); tip.appendChild(row);
+    });
+    tip.style.display = "block";
+    const cr = card.getBoundingClientRect(), hr = host.getBoundingClientRect();
+    const left = hr.left - cr.left + x(i) * hr.width / W;
+    tip.style.top = `${hr.top - cr.top + 8}px`;
+    tip.style.left = `${left + 12 + tip.offsetWidth > cr.width ? left - 12 - tip.offsetWidth : left + 12}px`;
+  });
+  hit.addEventListener("pointerleave", hide);
+  return svg;
+}
+
+// ---------- ejes de tiempo ----------
+function setupTime() {
+  const tz = D.timezone;
+  fmtTime = new Intl.DateTimeFormat("es-ES", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  fmtDay = new Intl.DateTimeFormat("es-ES", { timeZone: tz, weekday: "short", day: "numeric" });
+  const hm = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  localHM = ts => hm.format(new Date(ts * 1000)).split(":").map(Number);
+  tsAt = i => D.t0 + i * D.step;
+}
+const fmtDate = ts => fmtTime.format(new Date(ts * 1000));
+
+let SERIES_X;  // ticks de medianoche y franjas de noche de la serie, se calculan una vez
+function seriesAxis(n) {
+  const ticks = [], shade = [];
+  let nightStart = null;
+  for (let i = 0; i < n; i++) {
+    const [h, m] = localHM(tsAt(i));
+    if (h === 0 && m === 0) ticks.push({ i, label: fmtDay.format(new Date(tsAt(i) * 1000)) });
+    const night = h < 6;
+    if (night && nightStart == null) nightStart = i;
+    if (!night && nightStart != null) { shade.push([nightStart, i]); nightStart = null; }
+  }
+  if (nightStart != null) shade.push([nightStart, n - 1]);
+  return { ticks, shade };
+}
+
+function dayAxis(nSlots) {
+  const per = nSlots / 24, ticks = [];
+  for (let h = 0; h <= 24; h += 3) ticks.push({ i: Math.min(h * per, nSlots - 1), label: `${h}h` });
+  const fmt = i => { const m = Math.round(i * 1440 / nSlots); return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
+  return { ticks, shade: [[0, 6 * per]], xTip: i => `${fmt(i)} · media` };
+}
+
+function niceTicks(max) {
+  const step = max <= 10 ? 2 : max <= 20 ? 5 : 10;
+  const t = []; for (let v = 0; v <= max; v += step) t.push(v); return t;
+}
+
+// ---------- panel lateral ----------
+function renderPanel() {
+  const p = $("#panel"); p.innerHTML = "";
+  const h2 = document.createElement("h2");
+  const facts = document.createElement("dl"); facts.className = "facts";
+  const fact = (k, v) => { const d = document.createElement("div"); const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v; d.append(dt, dd); facts.appendChild(d); };
+  const s = selected;
+  if (!s) {
+    h2.textContent = "Toda la red";
+    const occ = D.net.occ.filter(v => v != null).at(-1);
+    const bikes = D.net.bikes.filter(v => v != null).at(-1);
+    const open = D.stations.filter(x => x.open && x.bikes != null);
+    fact("Bicis ahora", bikes ?? "—");
+    fact("Ocupación ahora", pct(occ));
+    fact("Estaciones vacías", open.filter(x => x.bikes === 0).length);
+    fact("Estaciones llenas", open.filter(x => x.cap && x.bikes >= x.cap).length);
+  } else {
+    h2.textContent = s.name ?? s.id;
+    fact("Bicis ahora", !s.open ? "cerrada" : s.bikes == null ? "—" : `${s.bikes}${s.cap ? ` / ${s.cap}` : ""}`);
+    fact("Ocupación ahora", pct(occOf(s)));
+    fact("Tiempo vacía", pct(s.pEmpty));
+    fact("Tiempo llena", pct(s.pFull));
+  }
+  p.append(h2, facts);
+
+  const h3 = document.createElement("h3"); h3.className = "sub"; h3.textContent = "Día típico (media por franja)";
+  const leg = document.createElement("div"); leg.className = "legend";
+  leg.innerHTML = `<span><i class="key" style="border-top-color:var(--full)"></i>Laborables</span><span><i class="key" style="border-top-color:var(--muted);border-top-style:dashed"></i>Fin de semana</span>`;
+  const host = document.createElement("div");
+  const box = document.createElement("div"); box.style.position = "relative"; box.append(h3, leg, host);
+  p.appendChild(box);
+  const wd = s ? s.wd : D.net.wd.map(v => v == null ? null : v * 100);
+  const we = s ? s.we : D.net.we.map(v => v == null ? null : v * 100);
+  const yMax = s ? Math.max(1, s.cap ?? 0, ...wd.filter(v => v != null), ...we.filter(v => v != null)) : 100;
+  const ax = dayAxis(wd.length);
+  lineChart(host, box, {
+    n: wd.length, height: 190, yMax, label: "Ocupación media por hora del día",
+    yTicks: s ? niceTicks(yMax) : [0, 50, 100],
+    yFmt: (v, tip) => s ? (tip ? `${v.toFixed(1)} bicis` : v) : `${Math.round(v)} %`,
+    ref: s && s.cap ? { v: s.cap, label: "capacidad" } : null,
+    series: [{ name: "laborables", values: wd, color: css("--full") },
+             { name: "fin de semana", values: we, color: css("--muted"), dash: "5 4" }],
+    xTicks: ax.ticks.filter((_, k) => k % 2 === 0), xTip: ax.xTip, shade: ax.shade,
+  });
+
+  if (s) {
+    const back = document.createElement("button"); back.className = "reset"; back.textContent = "Ver toda la red";
+    back.onclick = () => select(null);
+    p.appendChild(back);
+  } else {
+    const n = document.createElement("p"); n.className = "sub";
+    n.textContent = "En el mapa, el color de cada estación es su ocupación ahora: ámbar vacía, gris a medias, azul llena. Pulsa una para ver su historia.";
+    p.appendChild(n);
+  }
+}
+
+// ---------- serie temporal principal ----------
+function renderSeries() {
+  const s = selected, n = D.net.occ.length;
+  $("#seriesTitle").textContent = s ? `Ocupación en el tiempo · ${s.name ?? s.id}` : "Ocupación en el tiempo · toda la red";
+  const days = Math.round(n * D.step / 86400);
+  $("#seriesSub").textContent = (s ? "Bicis disponibles en la estación" : "Porcentaje de anclajes ocupados en toda la red") +
+    ` durante los últimos ${days} días, cada ${D.step / 60} min. Las franjas sombreadas son las noches (0–6 h); los cortes, huecos en la recogida.`;
+  $("#seriesLegend").innerHTML = "";
+  const values = s ? s.s : D.net.occ.map(v => v == null ? null : v * 100);
+  const yMax = s ? Math.max(1, s.cap ?? 0, ...values.filter(v => v != null)) : 100;
+  const ax = SERIES_X;
+  lineChart($("#series"), $("#seriesCard"), {
+    n, height: 280, yMax, label: "Ocupación a lo largo del tiempo",
+    yTicks: s ? niceTicks(yMax) : [0, 25, 50, 75, 100],
+    yFmt: (v, tip) => s ? (tip ? `${v} bicis` : v) : `${tip ? v.toFixed(1) : Math.round(v)} %`,
+    ref: s && s.cap ? { v: s.cap, label: `capacidad ${s.cap}` } : null,
+    series: [{ name: s ? "bicis" : "ocupación", values, color: css("--full") }],
+    xTicks: ax.ticks, xTip: i => fmtDate(tsAt(i)), shade: ax.shade,
+  });
+}
+
+// ---------- mapa de calor de todas las estaciones ----------
+let HEAT_ROWS;
+function renderHeat() {
+  const cv = $("#heat"), n = D.net.occ.length;
+  if (!HEAT_ROWS) {
+    const mean = s => { const v = s.s.filter(x => x != null); return v.length && s.cap ? v.reduce((a, b) => a + b, 0) / v.length / s.cap : Infinity; };
+    HEAT_ROWS = D.stations.filter(s => s.cap).map(s => [s, mean(s)]).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+  }
+  cv.width = n; cv.height = HEAT_ROWS.length;
+  const ctx = cv.getContext("2d"), img = ctx.createImageData(n, HEAT_ROWS.length);
+  const bg = hex2rgb(css("--bg"));
+  HEAT_ROWS.forEach((s, r) => {
+    for (let i = 0; i < n; i++) {
+      const v = s.s[i], o = (r * n + i) * 4;
+      const c = v == null ? bg : occRGB(Math.min(1, v / s.cap));
+      img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+    }
+  });
+  ctx.putImageData(img, 0, 0);
+}
+
+function setupHeatHover() {
+  const cv = $("#heat"), card = $("#heatCard");
+  const tip = document.createElement("div"); tip.className = "tip"; card.appendChild(tip);
+  const at = e => {
+    const r = cv.getBoundingClientRect();
+    const i = Math.floor((e.clientX - r.left) / r.width * cv.width), row = Math.floor((e.clientY - r.top) / r.height * cv.height);
+    return [Math.max(0, Math.min(cv.width - 1, i)), HEAT_ROWS[Math.max(0, Math.min(HEAT_ROWS.length - 1, row))]];
+  };
+  cv.addEventListener("pointermove", e => {
+    const [i, s] = at(e), v = s.s[i];
+    tip.replaceChildren();
+    const a = document.createElement("div"); a.textContent = s.name ?? s.id;
+    const b = document.createElement("div"); const st = document.createElement("strong");
+    st.textContent = v == null ? "sin datos" : `${v} / ${s.cap} bicis`; b.appendChild(st);
+    const c = document.createElement("div"); c.className = "t"; c.textContent = fmtDate(tsAt(i));
+    tip.append(a, b, c); tip.style.display = "block";
+    const cr = card.getBoundingClientRect();
+    const left = e.clientX - cr.left, top = e.clientY - cr.top;
+    tip.style.left = `${left + 14 + tip.offsetWidth > cr.width ? left - 14 - tip.offsetWidth : left + 14}px`;
+    tip.style.top = `${top + 14}px`;
+  });
+  cv.addEventListener("pointerleave", () => tip.style.display = "none");
+  cv.addEventListener("click", e => { select(at(e)[1]); $("#map").scrollIntoView({ behavior: "smooth", block: "center" }); });
+}
+
+// ---------- mapa ----------
+function markerStyle(s) {
+  const f = occOf(s), isSel = selected && selected.id === s.id;
+  const color = occColor(f);
+  return { radius: isSel ? 9 : 6, color: isSel ? css("--ink") : css("--surface"), weight: isSel ? 3 : 1,
+    fillColor: color, fillOpacity: f == null ? 0.35 : 0.9, opacity: 1 };
+}
+function styleMarkers() { D.stations.forEach(s => markers[s.id]?.setStyle(markerStyle(s)).setRadius(markerStyle(s).radius)); }
+
+function renderMap() {
+  map = L.map("map", { zoomControl: true, attributionControl: true }).setView([40.4205, -3.7005], 13);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(map);
+  const pts = [];
+  D.stations.filter(s => s.lat != null).forEach(s => {
+    const m = L.circleMarker([s.lat, s.lon], markerStyle(s)).addTo(map);
+    const t = document.createElement("span");
+    t.append(s.name ?? s.id, document.createElement("br"),
+      !s.open ? "fuera de servicio" : s.bikes == null ? "sin datos" : `${s.bikes}${s.cap ? ` / ${s.cap}` : ""} bicis`);
+    m.bindTooltip(t);
+    m.on("click", () => select(s));
+    markers[s.id] = m; pts.push([s.lat, s.lon]);
+  });
+  if (pts.length) map.fitBounds(pts, { padding: [20, 20] });
+}
+
+function select(s, pan = false) {
+  selected = s;
+  styleMarkers(); renderPanel(); renderSeries();
+  document.querySelectorAll("#rows tr").forEach(tr => tr.classList.toggle("sel", !!s && tr.dataset.id === s.id));
+  if (s && pan && s.lat != null) map.setView([s.lat, s.lon], Math.max(map.getZoom(), 15));
+  if (s) markers[s.id]?.bringToFront();
+}
+
+// ---------- tabla ----------
+const COLS = [
+  { k: "name", label: "Estación", get: s => (s.name ?? s.id).toLowerCase() },
+  { k: "bikes", label: "Bicis ahora", num: true, get: s => s.open ? s.bikes ?? -1 : -1 },
+  { k: "pEmpty", label: "Vacía", num: true, get: s => s.pEmpty ?? -1 },
+  { k: "pFull", label: "Llena", num: true, get: s => s.pFull ?? -1 },
+];
+let sortKey = "pEmpty", sortDesc = true;
+function renderHead() {
+  $("#thead").innerHTML = "";
+  for (const c of COLS) {
+    const th = document.createElement("th"); if (c.num) th.className = "num";
+    if (c.k === sortKey) th.setAttribute("aria-sort", sortDesc ? "descending" : "ascending");
+    const b = document.createElement("button"); b.textContent = c.label + (c.k === sortKey ? (sortDesc ? " ↓" : " ↑") : "");
+    b.onclick = () => { sortDesc = c.k === sortKey ? !sortDesc : c.k !== "name"; sortKey = c.k; renderHead(); renderTable(); };
+    th.appendChild(b); $("#thead").appendChild(th);
+  }
+}
+function renderTable() {
+  const q = $("#q").value.trim().toLowerCase(), col = COLS.find(c => c.k === sortKey);
+  const rows = D.stations.filter(s => !q || (s.name ?? "").toLowerCase().includes(q) || s.id === q)
+    .sort((a, b) => { const x = col.get(a), y = col.get(b); return (x < y ? -1 : x > y ? 1 : 0) * (sortDesc ? -1 : 1); })
+    .slice(0, 100);
+  const tb = $("#rows"); tb.replaceChildren();
+  for (const s of rows) {
+    const tr = document.createElement("tr"); tr.dataset.id = s.id; tr.tabIndex = 0;
+    if (selected?.id === s.id) tr.className = "sel";
+    const td = (txt, num) => { const c = document.createElement("td"); if (num) c.className = "num"; c.append(txt); tr.appendChild(c); return c; };
+    const dot = document.createElement("i"); dot.className = "dot"; dot.style.background = occColor(occOf(s));
+    td(dot).append(s.name ?? s.id);
+    td(!s.open ? "cerrada" : s.bikes == null ? "—" : `${s.bikes}${s.cap ? ` / ${s.cap}` : ""}`, true);
+    td(pct(s.pEmpty), true); td(pct(s.pFull), true);
+    const go = () => { select(s, true); $("#map").scrollIntoView({ behavior: "smooth", block: "center" }); };
+    tr.onclick = go; tr.onkeydown = e => { if (e.key === "Enter") go(); };
+    tb.appendChild(tr);
+  }
+}
+
+async function init() {
+  try {
+    const r = await fetch(`data.json?t=${Date.now()}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    D = await r.json();
+  } catch (e) {
+    $("#meta").textContent = `No se pudo cargar data.json (${e.message}). Si abres el archivo en local, sirve la carpeta con: python -m http.server`;
+    return;
+  }
+  RAMP = { empty: hex2rgb(css("--empty")), mid: hex2rgb(css("--mid")), full: hex2rgb(css("--full")) };
+  setupTime();
+  byId = Object.fromEntries(D.stations.map(s => [s.id, s]));
+  SERIES_X = seriesAxis(D.net.occ.length);
+  const days = (D.lastPoll - D.firstPoll) / 86400;
+  $("#meta").textContent = `${D.stations.length} estaciones vigiladas durante ${days < 2 ? Math.round(days * 24) + " horas" : days.toFixed(1) + " días"}, desde el ${fmtDate(D.firstPoll)}. Último dato: ${fmtDate(D.lastPoll)}.`;
+  if (days < 7) $("#notice").innerHTML = `<p class="notice">Aún hay pocos datos (${days < 2 ? Math.round(days * 24) + " horas" : days.toFixed(1) + " días"}). El día típico será representativo tras un par de semanas de recogida.</p>`;
+  $("#method").textContent = `Método: el estado de cada estación se consulta cada minuto. Aquí se muestra cada ${D.step / 60} min el número de bicis disponibles (ocupación = bicis / capacidad). Los instantes sin una consulta correcta en los ${Math.round(D.maxGap / 60)} minutos previos, y las estaciones fuera de servicio, quedan sin dato. Horas en ${D.timezone}.`;
+  renderMap(); renderPanel(); renderSeries(); renderHeat(); setupHeatHover(); renderHead(); renderTable();
+  $("#q").addEventListener("input", renderTable);
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { renderPanel(); renderSeries(); }, 150); });
+}
+init();
+</script>
+</body>
+</html>
