@@ -65,8 +65,16 @@ def main():
     if len(polls) == 0:
         raise SystemExit("La base de datos no tiene consultas correctas todavía.")
     st = st.sort_values("station_id").reset_index(drop=True)
-    cap = st["capacity"].to_numpy(dtype=float)
-    cap[cap <= 0] = np.nan
+    # El campo capacity del feed no es fiable (casi todas dicen 43-47). Se estima
+    # como el máximo de bicis + anclajes libres visto con la estación operativa;
+    # sin lecturas, se usa el del feed.
+    ok = (r["is_renting"] != 0) & r["bikes"].notna() & r["docks"].notna()
+    est = (r.loc[ok, "bikes"] + r.loc[ok, "docks"]).groupby(r.loc[ok, "station_id"]).max()
+    cap_api = st["capacity"].to_numpy(dtype=float)
+    cap = st["station_id"].map(est).to_numpy(dtype=float)
+    cap = np.where(np.isnan(cap), cap_api, cap)
+    cap[~(cap > 0)] = np.nan
+    cap_api[~(cap_api > 0)] = np.nan
 
     # Rejilla sobre todo el periodo (para perfiles y % vacía/llena) ...
     grid = np.arange(-(-polls[0] // args.step) * args.step, polls[-1] + 1, args.step)
@@ -111,6 +119,7 @@ def main():
             "lat": s.lat,
             "lon": s.lon,
             "cap": None if np.isnan(cap[k]) else int(cap[k]),
+            "capApi": None if np.isnan(cap_api[k]) else int(cap_api[k]),
             "bikes": int(last[-1]) if len(last) else None,
             "open": bool(renting_now.get(s.station_id, 1)),
             "pEmpty": rounded([p_empty[k]], 3)[0],
