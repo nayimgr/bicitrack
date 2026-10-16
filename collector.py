@@ -87,13 +87,22 @@ def as_int(v):
     return None if v is None else int(bool(v)) if isinstance(v, bool) else int(v)
 
 
+def capacity(s):
+    """GBFS 3.0: el campo capacity de BiciMAD no cuadra con los anclajes reales
+    (casi todas dicen 43-47); vehicle_docks_capacity sí."""
+    docks = s.get("vehicle_docks_capacity")
+    if docks:
+        return sum(d.get("count", 0) for d in docks)
+    return s.get("capacity")
+
+
 def update_stations(con, url):
     stations = get_json(url)["data"]["stations"]
     now = int(time.time())
     con.executemany(
         "INSERT OR REPLACE INTO stations VALUES (?,?,?,?,?,?)",
         [(str(s["station_id"]), localized(s.get("name")), s.get("lat"), s.get("lon"),
-          s.get("capacity"), now) for s in stations])
+          capacity(s), now) for s in stations])
     con.commit()
     log(f"station_information actualizado: {len(stations)} estaciones")
 

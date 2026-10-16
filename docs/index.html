@@ -524,7 +524,7 @@ async function init() {
   const days = (D.lastPoll - D.firstPoll) / 86400;
   $("#meta").textContent = `${D.stations.length} estaciones vigiladas durante ${days < 2 ? Math.round(days * 24) + " horas" : days.toFixed(1) + " días"}, desde el ${fmtDate(D.firstPoll)}. Último dato: ${fmtDate(D.lastPoll)}.`;
   if (days < 7) $("#notice").innerHTML = `<p class="notice">Aún hay pocos datos (${days < 2 ? Math.round(days * 24) + " horas" : days.toFixed(1) + " días"}). El día típico será representativo tras un par de semanas de recogida.</p>`;
-  $("#method").textContent = `Método: el estado de cada estación se consulta cada minuto. Aquí se muestra cada ${D.step / 60} min el número de bicis disponibles (ocupación = bicis / capacidad). La capacidad de cada estación es el máximo de bicis + anclajes libres observado, porque la que publica el feed no es fiable. Los instantes sin una consulta correcta en los ${Math.round(D.maxGap / 60)} minutos previos, y las estaciones fuera de servicio, quedan sin dato. Horas en ${D.timezone}.`;
+  $("#method").textContent = `Método: el estado de cada estación se consulta cada minuto. Aquí se muestra cada ${D.step / 60} min el número de bicis disponibles (ocupación = bicis / capacidad). Los instantes sin una consulta correcta en los ${Math.round(D.maxGap / 60)} minutos previos, y las estaciones fuera de servicio, quedan sin dato. Horas en ${D.timezone}.`;
   renderMap(); renderPanel(); renderSeries(); renderHeat(); setupHeatHover(); renderHead(); renderTable();
   $("#q").addEventListener("input", renderTable);
   let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { renderPanel(); renderSeries(); }, 150); });
