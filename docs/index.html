@@ -305,6 +305,15 @@ function dayAxis(nSlots) {
   return { ticks, shade: [[0, 6 * per]], xTip: i => `${fmt(i)} · media` };
 }
 
+// Máximo de bicis en cualquier estación durante la serie publicada (última semana):
+// eje Y común para que las estaciones sean comparables entre sí
+let BIKES_MAX;
+function bikesMax() {
+  if (BIKES_MAX == null)
+    BIKES_MAX = Math.max(1, ...D.stations.flatMap(s => s.s.filter(v => v != null)));
+  return BIKES_MAX;
+}
+
 function niceTicks(max) {
   const step = max <= 10 ? 2 : max <= 20 ? 5 : 10;
   const t = []; for (let v = 0; v <= max; v += step) t.push(v); return t;
@@ -344,13 +353,13 @@ function renderPanel() {
   p.appendChild(box);
   const wd = s ? s.wd : D.net.wd.map(v => v == null ? null : v * 100);
   const we = s ? s.we : D.net.we.map(v => v == null ? null : v * 100);
-  const yMax = s ? Math.max(1, s.cap ?? 0, ...wd.filter(v => v != null), ...we.filter(v => v != null)) : 100;
+  const yMax = s ? bikesMax() : 100;
   const ax = dayAxis(wd.length);
   lineChart(host, box, {
     n: wd.length, height: 190, yMax, label: "Ocupación media por hora del día",
     yTicks: s ? niceTicks(yMax) : [0, 50, 100],
     yFmt: (v, tip) => s ? (tip ? `${v.toFixed(1)} bicis` : v) : `${Math.round(v)} %`,
-    ref: s && s.cap ? { v: s.cap, label: "capacidad" } : null,
+    ref: s && s.cap && s.cap <= yMax ? { v: s.cap, label: "capacidad" } : null,
     series: [{ name: "laborables", values: wd, color: css("--full") },
              { name: "fin de semana", values: we, color: css("--muted"), dash: "5 4" }],
     xTicks: ax.ticks.filter((_, k) => k % 2 === 0), xTip: ax.xTip, shade: ax.shade,
@@ -376,13 +385,13 @@ function renderSeries() {
     ` durante los últimos ${days} días, cada ${D.step / 60} min. Las franjas sombreadas son las noches (0–6 h); los cortes, huecos en la recogida.`;
   $("#seriesLegend").innerHTML = "";
   const values = s ? s.s : D.net.occ.map(v => v == null ? null : v * 100);
-  const yMax = s ? Math.max(1, s.cap ?? 0, ...values.filter(v => v != null)) : 100;
+  const yMax = s ? bikesMax() : 100;
   const ax = SERIES_X;
   lineChart($("#series"), $("#seriesCard"), {
     n, height: 280, yMax, label: "Ocupación a lo largo del tiempo",
     yTicks: s ? niceTicks(yMax) : [0, 25, 50, 75, 100],
     yFmt: (v, tip) => s ? (tip ? `${v} bicis` : v) : `${tip ? v.toFixed(1) : Math.round(v)} %`,
-    ref: s && s.cap ? { v: s.cap, label: `capacidad ${s.cap}` } : null,
+    ref: s && s.cap && s.cap <= yMax ? { v: s.cap, label: `capacidad ${s.cap}` } : null,
     series: [{ name: s ? "bicis" : "ocupación", values, color: css("--full") }],
     xTicks: ax.ticks, xTip: i => fmtDate(tsAt(i)), shade: ax.shade,
   });
