@@ -13,8 +13,9 @@
 :root {
   --bg: #e9eeec; --surface: #ffffff; --ink: #17232a; --muted: #586a72;
   --line: #c9d3d0; --grid: #e3e8e6; --night: #f2f5f4;
-  /* Ocupación (divergente): vacía ↔ mitad ↔ llena */
-  --empty: #c48510; --mid: #d6dcda; --full: #0a6f9e; --nodata: #9aa8ad;
+  /* Ocupación: rojo vacía → amarillo mitad → azul llena (--cool es un paso
+     intermedio para que amarillo → azul no pase por un verde grisáceo) */
+  --empty: #c8402f; --mid: #e9b72c; --cool: #6fb0d6; --full: #0a6f9e; --nodata: #9aa8ad;
   --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
   --cond: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
 }
@@ -22,7 +23,7 @@
   :root {
     --bg: #10181c; --surface: #18232a; --ink: #e4ebe9; --muted: #92a3a9;
     --line: #2b3a41; --grid: #223038; --night: #1d2a31;
-    --empty: #bd862a; --mid: #3b474c; --full: #3a9dc4; --nodata: #5d6d73;
+    --empty: #e05a43; --mid: #e8bd3c; --cool: #82c0e3; --full: #3a8fd0; --nodata: #5d6d73;
   }
 }
 * { box-sizing: border-box; }
@@ -68,7 +69,7 @@ section > p { color: var(--muted); margin: 0 0 14px; max-width: 72ch; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
 .key { display: inline-block; width: 18px; height: 0; border-top: 2px solid; margin-right: 6px; vertical-align: middle; }
 .ramp { display: inline-block; width: 120px; height: 10px; border-radius: 2px; vertical-align: middle; margin: 0 6px;
-  background: linear-gradient(90deg, var(--empty), var(--mid), var(--full)); }
+  background: linear-gradient(90deg, var(--empty), var(--mid) 50%, var(--cool) 75%, var(--full)); }
 
 .chart { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
 .chart text { font: 400 11px var(--body); fill: var(--muted); }
@@ -180,11 +181,12 @@ const pct = f => f == null ? "—" : `${Math.round(f * 100)} %`;
 let D, map, markers = {}, selected = null, byId = {};
 let fmtTime, fmtDay, localHM, tsAt;   // dependen de D.timezone
 
-// ---------- color de ocupación (divergente ámbar ↔ gris ↔ azul) ----------
+// ---------- color de ocupación (rojo vacía → amarillo 50 % → azul llena) ----------
 const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 let RAMP;
 function occRGB(f) {
-  const [a, b, t] = f < 0.5 ? [RAMP.empty, RAMP.mid, f * 2] : [RAMP.mid, RAMP.full, f * 2 - 1];
+  let k = 1; while (k < RAMP.length - 1 && f > RAMP[k][0]) k++;
+  const [f0, a] = RAMP[k - 1], [f1, b] = RAMP[k], t = (f - f0) / (f1 - f0);
   return a.map((v, i) => Math.round(v + (b[i] - v) * t));
 }
 const occColor = f => f == null ? css("--nodata") : `rgb(${occRGB(Math.max(0, Math.min(1, f))).join(",")})`;
@@ -362,7 +364,7 @@ function renderPanel() {
     p.appendChild(back);
   } else {
     const n = document.createElement("p"); n.className = "sub";
-    n.textContent = "En el mapa, el color de cada estación es su ocupación ahora: ámbar vacía, gris a medias, azul llena. Pulsa una para ver su historia.";
+    n.textContent = "En el mapa, el color de cada estación es su ocupación ahora: rojo vacía, amarillo a medias, azul llena. Pulsa una para ver su historia.";
     p.appendChild(n);
   }
 }
@@ -517,7 +519,7 @@ async function init() {
     $("#meta").textContent = `No se pudo cargar data.json (${e.message}). Si abres el archivo en local, sirve la carpeta con: python -m http.server`;
     return;
   }
-  RAMP = { empty: hex2rgb(css("--empty")), mid: hex2rgb(css("--mid")), full: hex2rgb(css("--full")) };
+  RAMP = [[0, "--empty"], [0.5, "--mid"], [0.75, "--cool"], [1, "--full"]].map(([f, v]) => [f, hex2rgb(css(v))]);
   setupTime();
   byId = Object.fromEntries(D.stations.map(s => [s.id, s]));
   SERIES_X = seriesAxis(D.net.occ.length);
