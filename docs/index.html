@@ -13,9 +13,8 @@
 :root {
   --bg: #e9eeec; --surface: #ffffff; --ink: #17232a; --muted: #586a72;
   --line: #c9d3d0; --grid: #e3e8e6; --night: #f2f5f4;
-  /* Ocupación: rojo vacía → amarillo mitad → azul llena (--cool es un paso
-     intermedio para que amarillo → azul no pase por un verde grisáceo) */
-  --empty: #c8402f; --mid: #e9b72c; --cool: #6fb0d6; --full: #0a6f9e; --nodata: #9aa8ad;
+  /* Ocupación (secuencial): blanco vacía → azul llena */
+  --empty: #ffffff; --full: #0a6f9e; --nodata: #9aa8ad;
   --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
   --cond: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
 }
@@ -23,7 +22,7 @@
   :root {
     --bg: #10181c; --surface: #18232a; --ink: #e4ebe9; --muted: #92a3a9;
     --line: #2b3a41; --grid: #223038; --night: #1d2a31;
-    --empty: #e05a43; --mid: #e8bd3c; --cool: #82c0e3; --full: #3a8fd0; --nodata: #5d6d73;
+    --empty: #eef3f5; --full: #2f86c4; --nodata: #5d6d73;
   }
 }
 * { box-sizing: border-box; }
@@ -69,7 +68,7 @@ section > p { color: var(--muted); margin: 0 0 14px; max-width: 72ch; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
 .key { display: inline-block; width: 18px; height: 0; border-top: 2px solid; margin-right: 6px; vertical-align: middle; }
 .ramp { display: inline-block; width: 120px; height: 10px; border-radius: 2px; vertical-align: middle; margin: 0 6px;
-  background: linear-gradient(90deg, var(--empty), var(--mid) 50%, var(--cool) 75%, var(--full)); }
+  background: linear-gradient(90deg, var(--empty), var(--full)); box-shadow: inset 0 0 0 1px var(--line); }
 
 .chart { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
 .chart text { font: 400 11px var(--body); fill: var(--muted); }
@@ -94,12 +93,12 @@ th[aria-sort] button { color: var(--ink); }
 td.num, th.num { text-align: right; }
 tbody tr { cursor: pointer; }
 tbody tr:hover, tbody tr.sel { background: color-mix(in srgb, var(--full) 10%, transparent); }
-.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; box-shadow: 0 0 0 1px var(--muted); }
 input[type=search] {
   font: 400 1rem var(--body); color: var(--ink); background: var(--surface);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; width: min(100%, 340px); margin-bottom: 10px;
 }
-.notice { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--empty); border-radius: 8px; padding: 12px 16px; margin: 0 0 16px; }
+.notice { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--full); border-radius: 8px; padding: 12px 16px; margin: 0 0 16px; }
 
 footer { max-width: 1280px; margin: 0 auto; padding: 0 20px 40px; color: var(--muted); font-size: 0.9rem; }
 footer p { max-width: 80ch; }
@@ -146,7 +145,7 @@ footer p { max-width: 80ch; }
     <h2>Todas las estaciones</h2>
     <p>Una fila por estación, ordenadas de más vacía a más llena de media; el tiempo avanza hacia la derecha. Pasa el ratón para ver el detalle y pulsa para seleccionar la estación.</p>
     <div class="card" id="heatCard">
-      <div class="legend"><span>Vacía<i class="ramp"></i>Llena</span><span><i class="dot" style="background:var(--bg);border:1px solid var(--line)"></i>Sin datos o fuera de servicio</span></div>
+      <div class="legend"><span>Vacía<i class="ramp"></i>Llena</span><span><i class="dot" style="background:var(--nodata)"></i>Sin datos o fuera de servicio</span></div>
       <canvas id="heat" role="img" aria-label="Mapa de calor de la ocupación de cada estación a lo largo del tiempo"></canvas>
     </div>
   </section>
@@ -181,13 +180,11 @@ const pct = f => f == null ? "—" : `${Math.round(f * 100)} %`;
 let D, map, markers = {}, selected = null, byId = {};
 let fmtTime, fmtDay, localHM, tsAt;   // dependen de D.timezone
 
-// ---------- color de ocupación (rojo vacía → amarillo 50 % → azul llena) ----------
+// ---------- color de ocupación (blanco vacía → azul llena) ----------
 const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 let RAMP;
 function occRGB(f) {
-  let k = 1; while (k < RAMP.length - 1 && f > RAMP[k][0]) k++;
-  const [f0, a] = RAMP[k - 1], [f1, b] = RAMP[k], t = (f - f0) / (f1 - f0);
-  return a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  return RAMP.empty.map((v, i) => Math.round(v + (RAMP.full[i] - v) * f));
 }
 const occColor = f => f == null ? css("--nodata") : `rgb(${occRGB(Math.max(0, Math.min(1, f))).join(",")})`;
 const occOf = s => (s.open && s.cap && s.bikes != null) ? Math.min(1, s.bikes / s.cap) : null;
@@ -364,7 +361,7 @@ function renderPanel() {
     p.appendChild(back);
   } else {
     const n = document.createElement("p"); n.className = "sub";
-    n.textContent = "En el mapa, el color de cada estación es su ocupación ahora: rojo vacía, amarillo a medias, azul llena. Pulsa una para ver su historia.";
+    n.textContent = "En el mapa, el color de cada estación es su ocupación ahora: de blanco (vacía) a azul (llena). Pulsa una para ver su historia.";
     p.appendChild(n);
   }
 }
@@ -400,11 +397,11 @@ function renderHeat() {
   }
   cv.width = n; cv.height = HEAT_ROWS.length;
   const ctx = cv.getContext("2d"), img = ctx.createImageData(n, HEAT_ROWS.length);
-  const bg = hex2rgb(css("--bg"));
+  const nodata = hex2rgb(css("--nodata"));
   HEAT_ROWS.forEach((s, r) => {
     for (let i = 0; i < n; i++) {
       const v = s.s[i], o = (r * n + i) * 4;
-      const c = v == null ? bg : occRGB(Math.min(1, v / s.cap));
+      const c = v == null ? nodata : occRGB(Math.min(1, v / s.cap));
       img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
     }
   });
@@ -440,7 +437,7 @@ function setupHeatHover() {
 function markerStyle(s) {
   const f = occOf(s), isSel = selected && selected.id === s.id;
   const color = occColor(f);
-  return { radius: isSel ? 9 : 6, color: isSel ? css("--ink") : css("--surface"), weight: isSel ? 3 : 1,
+  return { radius: isSel ? 9 : 6, color: isSel ? css("--ink") : css("--muted"), weight: isSel ? 3 : 1,
     fillColor: color, fillOpacity: f == null ? 0.35 : 0.9, opacity: 1 };
 }
 function styleMarkers() { D.stations.forEach(s => markers[s.id]?.setStyle(markerStyle(s)).setRadius(markerStyle(s).radius)); }
@@ -519,7 +516,7 @@ async function init() {
     $("#meta").textContent = `No se pudo cargar data.json (${e.message}). Si abres el archivo en local, sirve la carpeta con: python -m http.server`;
     return;
   }
-  RAMP = [[0, "--empty"], [0.5, "--mid"], [0.75, "--cool"], [1, "--full"]].map(([f, v]) => [f, hex2rgb(css(v))]);
+  RAMP = { empty: hex2rgb(css("--empty")), full: hex2rgb(css("--full")) };
   setupTime();
   byId = Object.fromEntries(D.stations.map(s => [s.id, s]));
   SERIES_X = seriesAxis(D.net.occ.length);
