@@ -18,6 +18,13 @@ cp docs/index.html "$TMP/"
 "$PYTHON" export_dashboard.py --db "$DB" --out "$TMP/data.json"
 touch "$TMP/.nojekyll"
 
+# Identidad neutra para los commits de publicación: así no cuentan como
+# contribuciones del usuario cuya git config global se usaría por defecto.
+export GIT_AUTHOR_NAME="github-actions[bot]"
+export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+
 cd "$TMP"
 git init -q -b gh-pages
 git add -A
